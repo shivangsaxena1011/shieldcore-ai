@@ -68,7 +68,7 @@ export default function ExecutiveView() {
 
   return (
     <div className="space-y-6 font-mono">
-      <div className="flex justify-between items-center bg-[#070b19]/60 p-4 border border-cyan-500/10 rounded-xl backdrop-blur-md">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-[#070b19]/60 p-4 border border-cyan-500/10 rounded-xl backdrop-blur-md">
         <div>
           <h2 className="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
             <FileText className="h-4 w-4 text-cyan-400" />
@@ -81,15 +81,15 @@ export default function ExecutiveView() {
 
         <button
           onClick={handleExportReport}
-          className="flex items-center gap-2 bg-cyan-600 hover:bg-cyan-500 text-white font-bold px-4 py-2 rounded text-xs transition uppercase tracking-wider shadow-lg shadow-cyan-600/20"
+          className="flex items-center justify-center gap-2 bg-cyan-600 hover:bg-cyan-500 text-white font-bold px-4 py-2 rounded text-xs transition uppercase tracking-wider shadow-lg shadow-cyan-600/20 w-full sm:w-auto shrink-0"
         >
           <Download className="h-3.5 w-3.5" />
-          Export Briefing Report (.html/.pdf)
+          Export Briefing Report
         </button>
       </div>
 
       {/* Disruption Cards Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <div className="p-4 rounded-xl border border-amber-500/20 bg-amber-950/10 backdrop-blur-md">
           <div className="flex justify-between items-center mb-2">
             <span className="text-[10px] text-amber-400 uppercase tracking-widest font-bold">Power Sector</span>
@@ -132,12 +132,12 @@ export default function ExecutiveView() {
         <h3 className="text-xs font-bold text-cyan-400 uppercase tracking-wider mb-4">
           Autonomous Resilience Score (ARS) Component Breakdown
         </h3>
-        <div className="flex items-center gap-6">
-          <div className="text-center">
+        <div className="flex flex-col sm:flex-row items-center gap-6">
+          <div className="text-center shrink-0">
             <div className="text-4xl font-bold text-white glow-text-cyan">{globalArs}/100</div>
             <span className="text-[10px] text-gray-400 uppercase mt-1 block">Global ARS Index</span>
           </div>
-          <div className="flex-grow space-y-2 text-xs">
+          <div className="w-full flex-grow space-y-2 text-xs">
             <div>
               <div className="flex justify-between text-[10px] mb-1">
                 <span>Anomalies Baseline (Max 30)</span>

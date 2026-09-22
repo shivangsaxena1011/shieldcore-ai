@@ -225,6 +225,69 @@ export default function ThreeDigitalTwin() {
     window.addEventListener('mousemove', handleMouseMove);
     window.addEventListener('mouseup', handleMouseUp);
 
+    // Mobile Touch Events for Drag Orbit & Tap Selection
+    let touchStartTime = 0;
+    let touchStartX = 0;
+    let touchStartY = 0;
+
+    const handleTouchStart = (e: TouchEvent) => {
+      if (e.touches.length === 1) {
+        isDragging = true;
+        prevMouseX = e.touches[0].clientX;
+        prevMouseY = e.touches[0].clientY;
+        touchStartX = e.touches[0].clientX;
+        touchStartY = e.touches[0].clientY;
+        touchStartTime = Date.now();
+      }
+    };
+
+    const handleTouchMove = (e: TouchEvent) => {
+      if (!isDragging || e.touches.length !== 1) return;
+      const deltaX = e.touches[0].clientX - prevMouseX;
+      const deltaY = e.touches[0].clientY - prevMouseY;
+
+      cameraAngleY -= deltaX * 0.005;
+      cameraAngleX = Math.max(-Math.PI / 3, Math.min(Math.PI / 3, cameraAngleX - deltaY * 0.005));
+
+      updateCameraPosition();
+      prevMouseX = e.touches[0].clientX;
+      prevMouseY = e.touches[0].clientY;
+    };
+
+    const handleTouchEnd = (e: TouchEvent) => {
+      isDragging = false;
+      const elapsed = Date.now() - touchStartTime;
+      if (e.changedTouches.length === 1 && elapsed < 350) {
+        const touch = e.changedTouches[0];
+        const dist = Math.hypot(touch.clientX - touchStartX, touch.clientY - touchStartY);
+        if (dist < 15) {
+          if (!renderer.domElement) return;
+          const rect = renderer.domElement.getBoundingClientRect();
+          mouse.x = ((touch.clientX - rect.left) / rect.width) * 2 - 1;
+          mouse.y = -((touch.clientY - rect.top) / rect.height) * 2 + 1;
+
+          raycaster.setFromCamera(mouse, camera);
+
+          const targets: THREE.Object3D[] = [];
+          nodeMeshesRef.current.forEach(n => targets.push(n.baseMesh));
+
+          const intersects = raycaster.intersectObjects(targets);
+          if (intersects.length > 0) {
+            const clickedMesh = intersects[0].object;
+            nodeMeshesRef.current.forEach((node, id) => {
+              if (node.baseMesh === clickedMesh) {
+                setSelectedNodeId(id);
+              }
+            });
+          }
+        }
+      }
+    };
+
+    container.addEventListener('touchstart', handleTouchStart, { passive: true });
+    window.addEventListener('touchmove', handleTouchMove, { passive: true });
+    window.addEventListener('touchend', handleTouchEnd);
+
     // G. Raycasting for Selection
     const raycaster = new THREE.Raycaster();
     const mouse = new THREE.Vector2();
@@ -322,6 +385,10 @@ export default function ThreeDigitalTwin() {
       window.removeEventListener('mouseup', handleMouseUp);
       container.removeEventListener('click', handleMouseClick);
 
+      container.removeEventListener('touchstart', handleTouchStart);
+      window.removeEventListener('touchmove', handleTouchMove);
+      window.removeEventListener('touchend', handleTouchEnd);
+
       // Traversal and disposal of GPU resources
       scene.traverse((object) => {
         if ((object as THREE.Mesh).isMesh) {
@@ -369,19 +436,19 @@ export default function ThreeDigitalTwin() {
     <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 h-full min-h-[500px]">
       
       {/* 3D WebGL Canvas viewport */}
-      <div className="lg:col-span-3 relative rounded-xl border border-cyan-500/10 bg-[#070b19]/60 backdrop-blur-md overflow-hidden flex flex-col justify-between p-4 min-h-[400px]">
+      <div className="lg:col-span-3 relative rounded-xl border border-cyan-500/10 bg-[#070b19]/60 backdrop-blur-md overflow-hidden flex flex-col justify-between p-3 sm:p-4 min-h-[360px] sm:min-h-[400px]">
         
         {/* Overlays */}
-        <div className="absolute top-4 left-4 z-10 font-mono text-xs flex flex-col gap-1">
-          <div className="text-cyan-400 font-bold tracking-widest uppercase">
+        <div className="absolute top-3 left-3 sm:top-4 sm:left-4 z-10 font-mono flex flex-col gap-1 max-w-[65%] sm:max-w-none">
+          <div className="text-cyan-400 font-bold tracking-widest uppercase text-[10px] sm:text-xs">
             3D Infrastructure Digital Twin (WebGL Engine)
           </div>
-          <span className="text-[9px] text-gray-500">
-            Hold left mouse click and drag to orbit camera. Click 3D shapes to inspect.
+          <span className="text-[8px] sm:text-[9px] text-gray-400">
+            Drag to orbit camera. Tap / click 3D shapes to inspect.
           </span>
         </div>
 
-        <div className="absolute top-4 right-4 z-10 flex gap-2">
+        <div className="absolute top-3 right-3 sm:top-4 sm:right-4 z-10 flex gap-2">
           <button
             onClick={resetSimulation}
             className="flex items-center gap-1 bg-cyan-950/50 hover:bg-cyan-900 border border-cyan-500/30 text-cyan-400 text-[10px] px-2 py-1 rounded transition font-mono"
@@ -392,7 +459,7 @@ export default function ThreeDigitalTwin() {
         </div>
 
         {/* WebGL Canvas Holder */}
-        <div ref={containerRef} className="flex-grow w-full h-[400px]" />
+        <div ref={containerRef} className="flex-grow w-full h-[360px] sm:h-[400px] touch-none cursor-grab active:cursor-grabbing" />
 
         {/* Legend overlay */}
         <div className="border-t border-cyan-500/10 pt-2 flex gap-4 text-[9px] font-mono text-gray-500 uppercase">

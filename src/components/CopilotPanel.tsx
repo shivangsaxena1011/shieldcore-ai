@@ -3,10 +3,14 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useCyberStore } from '@/store/cyberStore';
 import { 
-  Send, Bot, User, Sparkles, ShieldAlert, CheckCircle, FileText, ArrowRight
+  Send, Bot, User, Sparkles, ShieldAlert, CheckCircle, FileText, ArrowRight, X
 } from 'lucide-react';
 
-export default function CopilotPanel() {
+interface CopilotPanelProps {
+  onClose?: () => void;
+}
+
+export default function CopilotPanel({ onClose }: CopilotPanelProps = {}) {
   // Granular Zustand selectors
   const copilotMessages = useCyberStore(state => state.copilotMessages);
   const copilotLoading = useCyberStore(state => state.copilotLoading);
@@ -52,7 +56,18 @@ export default function CopilotPanel() {
             </span>
           </div>
         </div>
-        <Sparkles className="h-4 w-4 text-cyan-400 animate-pulse" />
+        <div className="flex items-center gap-2">
+          <Sparkles className="h-4 w-4 text-cyan-400 animate-pulse" />
+          {onClose && (
+            <button
+              onClick={onClose}
+              className="p-1 rounded text-gray-400 hover:text-white hover:bg-cyan-950/60 border border-cyan-500/20 transition"
+              title="Close Copilot"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Messages area */}

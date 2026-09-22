@@ -12,7 +12,7 @@ export function AgentsMonitorView() {
 
   return (
     <div className="space-y-6 font-mono">
-      <div className="flex justify-between items-center bg-[#070b19]/60 p-4 border border-cyan-500/10 rounded-xl backdrop-blur-md">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-[#070b19]/60 p-4 border border-cyan-500/10 rounded-xl backdrop-blur-md">
         <div>
           <h2 className="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
             <Users className="h-4 w-4 text-cyan-400" />
@@ -24,7 +24,7 @@ export function AgentsMonitorView() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         {agents.map((agent) => (
           <div key={agent.id} className="p-4 rounded-xl border border-cyan-500/10 bg-[#070b19]/60 backdrop-blur-md space-y-3">
             <div className="flex justify-between items-center">
@@ -61,7 +61,7 @@ export function AssetInventoryView() {
 
   return (
     <div className="space-y-6 font-mono">
-      <div className="flex justify-between items-center bg-[#070b19]/60 p-4 border border-cyan-500/10 rounded-xl backdrop-blur-md">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-[#070b19]/60 p-4 border border-cyan-500/10 rounded-xl backdrop-blur-md">
         <div>
           <h2 className="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
             <Database className="h-4 w-4 text-cyan-400" />
@@ -72,20 +72,20 @@ export function AssetInventoryView() {
           </span>
         </div>
 
-        <div className="relative">
+        <div className="relative w-full sm:w-auto">
           <Search className="h-3.5 w-3.5 absolute left-3 top-2.5 text-gray-500" />
           <input
             type="text"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search assets or IPs..."
-            className="bg-[#040815] border border-cyan-500/30 text-white rounded pl-8 pr-3 py-1.5 text-xs focus:outline-none focus:border-cyan-400"
+            className="w-full sm:w-auto bg-[#040815] border border-cyan-500/30 text-white rounded pl-8 pr-3 py-1.5 text-xs focus:outline-none focus:border-cyan-400"
           />
         </div>
       </div>
 
-      <div className="rounded-xl border border-cyan-500/10 bg-[#070b19]/60 backdrop-blur-md overflow-hidden">
-        <table className="w-full text-left text-xs">
+      <div className="rounded-xl border border-cyan-500/10 bg-[#070b19]/60 backdrop-blur-md overflow-x-auto">
+        <table className="w-full text-left text-xs min-w-[650px]">
           <thead className="bg-[#040815] text-cyan-400 border-b border-cyan-500/10 text-[10px] uppercase">
             <tr>
               <th className="p-3">Asset Name</th>
@@ -147,7 +147,7 @@ export function VulnerabilitiesView() {
 
   return (
     <div className="space-y-6 font-mono">
-      <div className="flex justify-between items-center bg-[#070b19]/60 p-4 border border-cyan-500/10 rounded-xl backdrop-blur-md">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-[#070b19]/60 p-4 border border-cyan-500/10 rounded-xl backdrop-blur-md">
         <div>
           <h2 className="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
             <Shield className="h-4 w-4 text-cyan-400" />
@@ -161,9 +161,9 @@ export function VulnerabilitiesView() {
 
       <div className="space-y-3">
         {vulnerabilities.map((vuln) => (
-          <div key={vuln.cve} className="p-4 rounded-xl border border-cyan-500/10 bg-[#070b19]/60 backdrop-blur-md flex justify-between items-center">
+          <div key={vuln.cve} className="p-4 rounded-xl border border-cyan-500/10 bg-[#070b19]/60 backdrop-blur-md flex flex-col sm:flex-row justify-between sm:items-center gap-3">
             <div className="space-y-1">
-              <div className="flex items-center gap-3">
+              <div className="flex flex-wrap items-center gap-2 sm:gap-3">
                 <span className="text-xs font-bold text-white">{vuln.cve}</span>
                 <span className="text-xs text-cyan-300 font-bold">{vuln.title}</span>
                 <span className="text-[9px] bg-red-950 text-red-400 px-2 py-0.5 rounded font-bold">CVSS {vuln.severity}</span>
@@ -171,16 +171,16 @@ export function VulnerabilitiesView() {
               <p className="text-[10px] text-gray-400">{vuln.remediation} • Position: {vuln.networkPosition}</p>
             </div>
 
-            <div>
+            <div className="shrink-0">
               {vuln.status === 'patched' ? (
-                <span className="flex items-center gap-1 text-emerald-400 text-xs font-bold bg-emerald-950 px-3 py-1.5 rounded border border-emerald-500/30">
+                <span className="inline-flex items-center gap-1 text-emerald-400 text-xs font-bold bg-emerald-950 px-3 py-1.5 rounded border border-emerald-500/30">
                   <Check className="h-3.5 w-3.5" />
                   Patched
                 </span>
               ) : (
                 <button
                   onClick={() => runVulnerabilityPatch(vuln.cve)}
-                  className="bg-cyan-600 hover:bg-cyan-500 text-white font-bold px-4 py-1.5 rounded text-xs transition"
+                  className="w-full sm:w-auto bg-cyan-600 hover:bg-cyan-500 text-white font-bold px-4 py-1.5 rounded text-xs transition text-center"
                 >
                   Apply AI Patch
                 </button>
@@ -230,7 +230,7 @@ export function IncidentsView({ onLinkIncident }: { onLinkIncident?: (inc: Incid
 
   return (
     <div className="space-y-6 font-mono">
-      <div className="flex justify-between items-center bg-[#070b19]/60 p-4 border border-cyan-500/10 rounded-xl backdrop-blur-md">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-[#070b19]/60 p-4 border border-cyan-500/10 rounded-xl backdrop-blur-md">
         <div>
           <h2 className="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
             <AlertTriangle className="h-4 w-4 text-red-400" />
@@ -241,8 +241,8 @@ export function IncidentsView({ onLinkIncident }: { onLinkIncident?: (inc: Incid
           </span>
         </div>
 
-        <div className="flex items-center gap-2 text-xs">
-          <span className="text-gray-400 text-[10px]">Filter Severity:</span>
+        <div className="flex flex-wrap items-center gap-1.5 text-xs">
+          <span className="text-gray-400 text-[10px]">Filter:</span>
           {['all', 'critical', 'high', 'medium'].map((sev) => (
             <button
               key={sev}
@@ -257,10 +257,10 @@ export function IncidentsView({ onLinkIncident }: { onLinkIncident?: (inc: Incid
 
       <div className="space-y-4">
         {filtered.map((inc) => (
-          <div key={inc.id} className="p-5 rounded-xl border border-cyan-500/10 bg-[#070b19]/60 backdrop-blur-md space-y-4">
+          <div key={inc.id} className="p-4 sm:p-5 rounded-xl border border-cyan-500/10 bg-[#070b19]/60 backdrop-blur-md space-y-4">
             <div className="flex flex-wrap justify-between items-start gap-2">
               <div className="space-y-1">
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   <span className={`px-2 py-0.5 rounded text-[9px] uppercase font-bold ${
                     inc.severity === 'critical' ? 'bg-red-950 text-red-400 border border-red-500/30' :
                     inc.severity === 'high' ? 'bg-orange-950 text-orange-400 border border-orange-500/30' :
@@ -271,7 +271,7 @@ export function IncidentsView({ onLinkIncident }: { onLinkIncident?: (inc: Incid
                   <span className="text-xs text-white font-bold">{inc.title}</span>
                   <span className="text-[9px] text-gray-400">({inc.id})</span>
                 </div>
-                <div className="text-[10px] text-gray-400 flex items-center gap-4">
+                <div className="text-[10px] text-gray-400 flex flex-wrap items-center gap-2 sm:gap-4">
                   <span>Source: <strong className="text-cyan-300">{inc.source}</strong></span>
                   <span>MITRE: <strong className="text-white">{inc.mitreTechnique}</strong></span>
                   <span>Confidence: <strong className="text-emerald-400">{inc.confidenceScore}%</strong></span>
@@ -318,22 +318,22 @@ export function IncidentsView({ onLinkIncident }: { onLinkIncident?: (inc: Incid
                 </div>
                 <div className="flex justify-between text-[11px]">
                   <span className="text-gray-400">Affected CNI Enclaves:</span>
-                  <span className="text-cyan-300 font-bold">{inc.affectedNodes.join(', ')}</span>
+                  <span className="text-cyan-300 font-bold truncate max-w-[180px] sm:max-w-none">{inc.affectedNodes.join(', ')}</span>
                 </div>
               </div>
             </div>
 
             {/* Actions */}
-            <div className="flex justify-between items-center pt-2 border-t border-cyan-500/10">
+            <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-3 pt-2 border-t border-cyan-500/10">
               <div className="text-[10px] text-gray-500">
                 CVE Associated: <strong className="text-white">{inc.cveAssociated}</strong>
               </div>
 
-              <div className="flex gap-2">
+              <div className="flex flex-wrap gap-2">
                 {onLinkIncident && (
                   <button
                     onClick={() => onLinkIncident(inc)}
-                    className="flex items-center gap-1 bg-cyan-950/60 hover:bg-cyan-900 border border-cyan-500/30 text-cyan-300 px-3 py-1.5 rounded text-[10px] font-bold transition"
+                    className="flex-1 sm:flex-none flex items-center justify-center gap-1 bg-cyan-950/60 hover:bg-cyan-900 border border-cyan-500/30 text-cyan-300 px-3 py-1.5 rounded text-[10px] font-bold transition"
                   >
                     <PlaySquare className="h-3 w-3" />
                     Focus 3D Twin
@@ -342,7 +342,7 @@ export function IncidentsView({ onLinkIncident }: { onLinkIncident?: (inc: Incid
                 {inc.status === 'active' && (
                   <button
                     onClick={() => triggerSOARPlaybook(inc.id, 'Host Isolation & Microsegmentation')}
-                    className="flex items-center gap-1 bg-orange-600 hover:bg-orange-500 text-white px-3 py-1.5 rounded text-[10px] font-bold transition"
+                    className="flex-1 sm:flex-none flex items-center justify-center gap-1 bg-orange-600 hover:bg-orange-500 text-white px-3 py-1.5 rounded text-[10px] font-bold transition"
                   >
                     <Shield className="h-3 w-3" />
                     SOAR Quarantine
@@ -351,7 +351,7 @@ export function IncidentsView({ onLinkIncident }: { onLinkIncident?: (inc: Incid
                 {inc.status !== 'mitigated' && (
                   <button
                     onClick={() => mitigateIncident(inc.id)}
-                    className="flex items-center gap-1 bg-emerald-600 hover:bg-emerald-500 text-white px-3 py-1.5 rounded text-[10px] font-bold transition"
+                    className="flex-1 sm:flex-none flex items-center justify-center gap-1 bg-emerald-600 hover:bg-emerald-500 text-white px-3 py-1.5 rounded text-[10px] font-bold transition"
                   >
                     <CheckCircle className="h-3 w-3" />
                     Mitigate Alert

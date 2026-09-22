@@ -52,19 +52,19 @@ export default function SocDashboardView({ onLinkIncident }: SocDashboardViewPro
           )}
         </div>
 
-        <form onSubmit={handleCommandSubmit} className="flex gap-2">
+        <form onSubmit={handleCommandSubmit} className="flex flex-col sm:flex-row gap-2">
           <input
             type="text"
             value={commandInput}
             onChange={(e) => setCommandInput(e.target.value)}
-            placeholder="Execute Natural Language SOAR Command (e.g. 'Protect AIIMS from ransomware' or 'Simulate attack on railways')..."
+            placeholder="Execute Natural Language SOAR Command (e.g. 'Protect AIIMS from ransomware')..."
             disabled={supervisorWorkflowActive}
             className="flex-grow bg-[#040815] border border-cyan-500/30 rounded px-4 py-2.5 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400 transition"
           />
           <button
             type="submit"
             disabled={supervisorWorkflowActive || !commandInput.trim()}
-            className="bg-cyan-600 hover:bg-cyan-500 disabled:bg-cyan-950 disabled:text-gray-600 text-white font-bold px-5 py-2.5 rounded text-xs transition uppercase tracking-wider flex items-center gap-2"
+            className="bg-cyan-600 hover:bg-cyan-500 disabled:bg-cyan-950 disabled:text-gray-600 text-white font-bold px-5 py-2.5 rounded text-xs transition uppercase tracking-wider flex items-center justify-center gap-2 shrink-0"
           >
             Dispatch Agents
             <ArrowRight className="h-4 w-4" />
@@ -88,27 +88,27 @@ export default function SocDashboardView({ onLinkIncident }: SocDashboardViewPro
         
         {/* Left 2 Columns: 3D Twin or Globe Switcher */}
         <div className="lg:col-span-2 space-y-4">
-          <div className="flex justify-between items-center bg-[#070b19]/60 p-3 border border-cyan-500/10 rounded-xl backdrop-blur-md">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 bg-[#070b19]/60 p-3 border border-cyan-500/10 rounded-xl backdrop-blur-md">
             <span className="text-xs text-cyan-400 font-bold uppercase tracking-widest">
-              CNI Digital Twin & Threat Telemetry Viewport
+              CNI Digital Twin & Telemetry Viewport
             </span>
             <div className="flex gap-2">
               <button
                 onClick={() => setViewMode('twin')}
-                className={`px-3 py-1 rounded text-[10px] font-bold transition uppercase ${viewMode === 'twin' ? 'bg-cyan-600 text-white' : 'bg-gray-800 text-gray-400'}`}
+                className={`flex-1 sm:flex-none px-3 py-1 rounded text-[10px] font-bold transition uppercase ${viewMode === 'twin' ? 'bg-cyan-600 text-white' : 'bg-gray-800 text-gray-400'}`}
               >
                 3D WebGL Twin
               </button>
               <button
                 onClick={() => setViewMode('globe')}
-                className={`px-3 py-1 rounded text-[10px] font-bold transition uppercase ${viewMode === 'globe' ? 'bg-cyan-600 text-white' : 'bg-gray-800 text-gray-400'}`}
+                className={`flex-1 sm:flex-none px-3 py-1 rounded text-[10px] font-bold transition uppercase ${viewMode === 'globe' ? 'bg-cyan-600 text-white' : 'bg-gray-800 text-gray-400'}`}
               >
                 2D Cyber Globe
               </button>
             </div>
           </div>
 
-          <div className="h-[420px]">
+          <div className="min-h-[400px] h-[420px]">
             {viewMode === 'twin' ? <ThreeDigitalTwin /> : <CyberGlobe />}
           </div>
         </div>
@@ -210,12 +210,14 @@ export default function SocDashboardView({ onLinkIncident }: SocDashboardViewPro
             <span className="text-[9px] text-emerald-400 animate-pulse">● LIVE STREAM</span>
           </div>
 
-          <div className="space-y-1.5 max-h-40 overflow-y-auto text-[10px]">
+          <div className="space-y-1.5 max-h-48 overflow-y-auto text-[10px]">
             {logs.slice(0, 5).map((log) => (
-              <div key={log.id} className="p-2 bg-[#040815] border border-cyan-500/10 rounded flex justify-between items-center">
-                <span className="text-gray-400">{log.timestamp.substring(11, 19)}</span>
-                <span className="text-cyan-300 font-bold max-w-[200px] truncate">{log.source}</span>
-                <span className="text-gray-300 max-w-[250px] truncate">{log.message}</span>
+              <div key={log.id} className="p-2 bg-[#040815] border border-cyan-500/10 rounded flex flex-col sm:flex-row sm:justify-between sm:items-center gap-1">
+                <div className="flex items-center gap-2 shrink-0">
+                  <span className="text-gray-400">{log.timestamp.substring(11, 19)}</span>
+                  <span className="text-cyan-300 font-bold max-w-[160px] truncate">{log.source}</span>
+                </div>
+                <span className="text-gray-300 truncate text-[9px] sm:text-[10px]">{log.message}</span>
               </div>
             ))}
           </div>

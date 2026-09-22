@@ -41,22 +41,22 @@ export default function KnowledgeGraphView() {
 
   return (
     <div className="space-y-6 font-mono">
-      <div className="flex justify-between items-center bg-[#070b19]/60 p-4 border border-cyan-500/10 rounded-xl backdrop-blur-md">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-[#070b19]/60 p-4 border border-cyan-500/10 rounded-xl backdrop-blur-md">
         <div>
           <h2 className="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
             <Network className="h-4 w-4 text-cyan-400" />
-            Neo4j Threat Knowledge Graph (BFS Pathfinder Engine)
+            Threat Knowledge Graph (BFS Pathfinder Engine)
           </h2>
           <span className="text-[10px] text-gray-400">
             Computes shortest attack traversal paths using Breadth-First Search across entity nodes.
           </span>
         </div>
 
-        <div className="flex items-center gap-3 text-xs">
+        <div className="flex flex-wrap items-center gap-2 text-xs">
           <select
             value={selectedNode || ''}
             onChange={(e) => setSelectedNode(e.target.value || null)}
-            className="bg-[#040815] border border-cyan-500/30 text-cyan-300 rounded px-2 py-1 text-[11px]"
+            className="bg-[#040815] border border-cyan-500/30 text-cyan-300 rounded px-2 py-1 text-[11px] max-w-[130px] sm:max-w-none"
           >
             <option value="">Start Node...</option>
             {graphNodes.map(n => (
@@ -69,7 +69,7 @@ export default function KnowledgeGraphView() {
           <select
             value={targetNode || ''}
             onChange={(e) => setTargetNode(e.target.value || null)}
-            className="bg-[#040815] border border-cyan-500/30 text-cyan-300 rounded px-2 py-1 text-[11px]"
+            className="bg-[#040815] border border-cyan-500/30 text-cyan-300 rounded px-2 py-1 text-[11px] max-w-[130px] sm:max-w-none"
           >
             <option value="">Target Node...</option>
             {graphNodes.map(n => (
@@ -83,7 +83,7 @@ export default function KnowledgeGraphView() {
             className="bg-cyan-600 hover:bg-cyan-500 disabled:bg-cyan-950 disabled:text-gray-600 text-white px-3 py-1 rounded text-[11px] font-bold transition flex items-center gap-1"
           >
             <Search className="h-3 w-3" />
-            Compute Path
+            Compute
           </button>
 
           {(selectedNode || calculatedPath.length > 0 || hasSearched) && (
@@ -98,9 +98,9 @@ export default function KnowledgeGraphView() {
       </div>
 
       {calculatedPath.length > 0 && (
-        <div className="p-3 bg-cyan-950/40 border border-cyan-500/30 rounded-lg text-xs flex items-center gap-2">
-          <span className="text-cyan-400 font-bold uppercase">BFS Shortest Path Discovered:</span>
-          <span className="text-white">{calculatedPath.join(' → ')}</span>
+        <div className="p-3 bg-cyan-950/40 border border-cyan-500/30 rounded-lg text-xs flex items-center gap-2 overflow-x-auto">
+          <span className="text-cyan-400 font-bold uppercase shrink-0">BFS Shortest Path Discovered:</span>
+          <span className="text-white whitespace-nowrap">{calculatedPath.join(' → ')}</span>
         </div>
       )}
 
@@ -112,8 +112,8 @@ export default function KnowledgeGraphView() {
       )}
 
       {/* SVG Knowledge Graph Representation */}
-      <div className="relative w-full h-[500px] rounded-xl border border-cyan-500/10 bg-[#070b19]/60 backdrop-blur-md p-6 overflow-hidden flex items-center justify-center">
-        <svg className="w-full h-full">
+      <div className="relative w-full h-[360px] sm:h-[450px] md:h-[500px] rounded-xl border border-cyan-500/10 bg-[#070b19]/60 backdrop-blur-md p-2 sm:p-6 overflow-hidden flex items-center justify-center">
+        <svg className="w-full h-full" viewBox="0 0 950 480" preserveAspectRatio="xMidYMid meet">
           {/* Render Graph Links */}
           {graphLinks.map((link, idx) => {
             const sourceNode = graphNodes.find(n => n.id === link.source);
