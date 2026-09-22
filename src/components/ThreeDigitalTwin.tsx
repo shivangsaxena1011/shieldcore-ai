@@ -7,32 +7,64 @@ import { Play, Shield, RefreshCw } from 'lucide-react';
 
 interface NodeMesh {
   id: string;
-  mesh: THREE.Group;
+  group: THREE.Group;
+  baseMesh: THREE.Mesh;
+  ringMesh: THREE.Mesh;
   baseMaterial: THREE.MeshStandardMaterial;
   glowMaterial: THREE.MeshBasicMaterial;
-  asset: Asset;
 }
+
+const positions: { [key: string]: THREE.Vector3 } = {
+  'pwr-gen-1': new THREE.Vector3(-60, 15, -30),
+  'pwr-sw-1': new THREE.Vector3(-30, 0, -10),
+  'pwr-db-1': new THREE.Vector3(-60, -15, 10),
+  'pwr-fw-1': new THREE.Vector3(0, 0, -30),
+  'rly-sig-1': new THREE.Vector3(-30, 20, 40),
+  'rly-sw-1': new THREE.Vector3(0, 0, 30),
+  'med-rec-1': new THREE.Vector3(60, 15, -20),
+  'med-fw-1': new THREE.Vector3(30, 0, -10),
+  'smrt-cam-1': new THREE.Vector3(60, -15, 30),
+  'cld-edge-1': new THREE.Vector3(30, 0, 30)
+};
 
 export default function ThreeDigitalTwin() {
   const containerRef = useRef<HTMLDivElement | null>(null);
-  const { assets, simulateRansomwareOutbreak, resetSimulation, isolateAsset } = useCyberStore();
-  const [hoveredNode, setHoveredNode] = useState<string | null>(null);
+
+  // Zustand Granular Selectors
+  const assets = useCyberStore(state => state.assets);
+  const simulateRansomwareOutbreak = useCyberStore(state => state.simulateRansomwareOutbreak);
+  const resetSimulation = useCyberStore(state => state.resetSimulation);
+  const isolateAsset = useCyberStore(state => state.isolateAsset);
+
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+
+  // Persistent Refs to prevent WebGL scene recreation
+  const nodeMeshesRef = useRef<Map<string, NodeMesh>>(new Map());
+  const assetsRef = useRef<Asset[]>(assets);
+  const lineMeshesRef = useRef<THREE.Line[]>([]);
+
+  // Synchronize assetsRef without triggering WebGL re-initialization
+  useEffect(() => {
+    assetsRef.current = assets;
+  }, [assets]);
 
   const selectedAsset = assets.find(a => a.id === selectedNodeId);
 
+  // 1. WebGL Initialization & Scene Setup (Runs ONCE on mount)
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
 
-    // 1. Scene, Camera & Renderer Setup
+    let animFrameId: number;
+
+    // A. Scene, Camera, Renderer
     const scene = new THREE.Scene();
     scene.background = new THREE.Color('#030712');
     scene.fog = new THREE.FogExp2('#030712', 0.015);
 
     const camera = new THREE.PerspectiveCamera(
       50,
-      container.clientWidth / container.clientHeight,
+      container.clientWidth / container.clientHeight || 1,
       0.1,
       1000
     );
@@ -40,12 +72,12 @@ export default function ThreeDigitalTwin() {
     camera.lookAt(0, 0, 0);
 
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-    renderer.setSize(container.clientWidth, container.clientHeight);
-    renderer.setPixelRatio(window.devicePixelRatio);
+    renderer.setSize(container.clientWidth || 300, container.clientHeight || 300);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.shadowMap.enabled = true;
     container.appendChild(renderer.domElement);
 
-    // 2. Lighting Setup
+    // B. Lighting
     const ambientLight = new THREE.AmbientLight('#ffffff', 0.35);
     scene.add(ambientLight);
 
@@ -57,7 +89,7 @@ export default function ThreeDigitalTwin() {
     dirLight2.position.set(-100, 50, -50);
     scene.add(dirLight2);
 
-    // 3. Grid Floor
+    // C. Grid Floor
     const gridHelper = new THREE.GridHelper(300, 40, '#06b6d4', '#06b6d4');
     const gridMaterial = gridHelper.material as THREE.LineBasicMaterial;
     gridMaterial.opacity = 0.06;
@@ -65,31 +97,16 @@ export default function ThreeDigitalTwin() {
     gridHelper.position.y = -20;
     scene.add(gridHelper);
 
-    // 4. Create Node Objects mapped in 3D coordinates
-    // Assign 3D coordinates to assets
-    const positions: { [key: string]: THREE.Vector3 } = {
-      'pwr-gen-1': new THREE.Vector3(-60, 15, -30),
-      'pwr-sw-1': new THREE.Vector3(-30, 0, -10),
-      'pwr-db-1': new THREE.Vector3(-60, -15, 10),
-      'pwr-fw-1': new THREE.Vector3(0, 0, -30),
-      'rly-sig-1': new THREE.Vector3(-30, 20, 40),
-      'rly-sw-1': new THREE.Vector3(0, 0, 30),
-      'med-rec-1': new THREE.Vector3(60, 15, -20),
-      'med-fw-1': new THREE.Vector3(30, 0, -10),
-      'smrt-cam-1': new THREE.Vector3(60, -15, 30),
-      'cld-edge-1': new THREE.Vector3(30, 0, 30)
-    };
+    // D. Build Persistent Node Meshes Map
+    const currentAssets = assetsRef.current;
+    nodeMeshesRef.current.clear();
 
-    const nodeMeshes: NodeMesh[] = [];
-
-    assets.forEach((asset) => {
+    currentAssets.forEach((asset) => {
       const pos = positions[asset.id] || new THREE.Vector3(0, 0, 0);
-
-      // Create Group
       const nodeGroup = new THREE.Group();
       nodeGroup.position.copy(pos);
 
-      // Node Geometry based on CNI type
+      // Node Geometry based on type
       let geom: THREE.BufferGeometry;
       if (asset.type === 'database') {
         geom = new THREE.CylinderGeometry(6, 6, 12, 12);
@@ -100,12 +117,11 @@ export default function ThreeDigitalTwin() {
       } else if (asset.type === 'cloud') {
         geom = new THREE.IcosahedronGeometry(7, 1);
       } else {
-        geom = new THREE.BoxGeometry(8, 4, 8); // switches, firewalls
+        geom = new THREE.BoxGeometry(8, 4, 8);
       }
 
-      // Material
       const baseMat = new THREE.MeshStandardMaterial({
-        color: '#0a142c',
+        color: asset.status === 'compromised' ? '#ef4444' : asset.status === 'isolated' ? '#f97316' : '#0a142c',
         roughness: 0.2,
         metalness: 0.8
       });
@@ -115,10 +131,9 @@ export default function ThreeDigitalTwin() {
       coreMesh.receiveShadow = true;
       nodeGroup.add(coreMesh);
 
-      // Glow Ring
       const ringGeom = new THREE.RingGeometry(9, 10, 32);
       const glowMat = new THREE.MeshBasicMaterial({
-        color: '#06b6d4',
+        color: asset.status === 'compromised' ? '#ef4444' : asset.status === 'isolated' ? '#f97316' : '#06b6d4',
         side: THREE.DoubleSide,
         transparent: true,
         opacity: 0.5
@@ -129,22 +144,22 @@ export default function ThreeDigitalTwin() {
 
       scene.add(nodeGroup);
 
-      nodeMeshes.push({
+      nodeMeshesRef.current.set(asset.id, {
         id: asset.id,
-        mesh: nodeGroup,
+        group: nodeGroup,
+        baseMesh: coreMesh,
+        ringMesh,
         baseMaterial: baseMat,
-        glowMaterial: glowMat,
-        asset
+        glowMaterial: glowMat
       });
     });
 
-    // 5. Connection Lines & Animated Flow Particles
+    // E. Build Connection Lines
     const linesGroup = new THREE.Group();
     scene.add(linesGroup);
+    lineMeshesRef.current = [];
 
-    const connectionLines: { start: THREE.Vector3; end: THREE.Vector3; isCompromised: boolean }[] = [];
-
-    assets.forEach((asset) => {
+    currentAssets.forEach((asset) => {
       const startPos = positions[asset.id];
       if (!startPos) return;
 
@@ -152,25 +167,22 @@ export default function ThreeDigitalTwin() {
         const endPos = positions[depId];
         if (!endPos) return;
 
-        const isCompromised = asset.status === 'compromised' || assets.find(a => a.id === depId)?.status === 'compromised';
-        
-        // Draw physical line
+        const isCompromised = asset.status === 'compromised' || currentAssets.find(a => a.id === depId)?.status === 'compromised';
+
         const points = [startPos, endPos];
         const lineGeom = new THREE.BufferGeometry().setFromPoints(points);
         const lineMat = new THREE.LineBasicMaterial({
           color: isCompromised ? '#ef4444' : '#06b6d4',
           transparent: true,
-          opacity: isCompromised ? 0.8 : 0.25,
-          linewidth: isCompromised ? 3 : 1
+          opacity: isCompromised ? 0.8 : 0.25
         });
         const line = new THREE.Line(lineGeom, lineMat);
         linesGroup.add(line);
-
-        connectionLines.push({ start: startPos, end: endPos, isCompromised });
+        lineMeshesRef.current.push(line);
       });
     });
 
-    // 6. Camera Interactivity (simple dragging)
+    // F. Drag Orbit Camera Interactivity
     let isDragging = false;
     let prevMouseX = 0;
     let prevMouseY = 0;
@@ -178,12 +190,13 @@ export default function ThreeDigitalTwin() {
     let cameraAngleX = Math.PI / 8;
     const cameraRadius = 160;
 
-    const updateCamera = () => {
+    const updateCameraPosition = () => {
       camera.position.x = cameraRadius * Math.sin(cameraAngleY) * Math.cos(cameraAngleX);
       camera.position.z = cameraRadius * Math.cos(cameraAngleY) * Math.cos(cameraAngleX);
       camera.position.y = cameraRadius * Math.sin(cameraAngleX);
       camera.lookAt(0, 0, 0);
     };
+    updateCameraPosition();
 
     const handleMouseDown = (e: MouseEvent) => {
       isDragging = true;
@@ -199,8 +212,7 @@ export default function ThreeDigitalTwin() {
       cameraAngleY -= deltaX * 0.005;
       cameraAngleX = Math.max(-Math.PI / 3, Math.min(Math.PI / 3, cameraAngleX - deltaY * 0.005));
 
-      updateCamera();
-
+      updateCameraPosition();
       prevMouseX = e.clientX;
       prevMouseY = e.clientY;
     };
@@ -213,114 +225,156 @@ export default function ThreeDigitalTwin() {
     window.addEventListener('mousemove', handleMouseMove);
     window.addEventListener('mouseup', handleMouseUp);
 
-    // 7. Raycasting for hover & select click
+    // G. Raycasting for Selection
     const raycaster = new THREE.Raycaster();
     const mouse = new THREE.Vector2();
 
     const handleMouseClick = (e: MouseEvent) => {
-      // Calculate mouse position in normalized device coordinates
+      if (!renderer.domElement) return;
       const rect = renderer.domElement.getBoundingClientRect();
       mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
       mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
 
       raycaster.setFromCamera(mouse, camera);
 
-      // Check intersections with node core meshes
-      const targets = nodeMeshes.map(n => n.mesh.children[0]);
-      const intersects = raycaster.intersectObjects(targets);
+      const targets: THREE.Object3D[] = [];
+      nodeMeshesRef.current.forEach(n => targets.push(n.baseMesh));
 
+      const intersects = raycaster.intersectObjects(targets);
       if (intersects.length > 0) {
-        // Find corresponding NodeGroup
         const clickedMesh = intersects[0].object;
-        const matched = nodeMeshes.find(n => n.mesh.children[0] === clickedMesh);
-        if (matched) {
-          setSelectedNodeId(matched.id);
-        }
+        nodeMeshesRef.current.forEach((node, id) => {
+          if (node.baseMesh === clickedMesh) {
+            setSelectedNodeId(id);
+          }
+        });
       }
     };
     container.addEventListener('click', handleMouseClick);
 
-    // 8. Animation & Render loop
-    let animId: number;
+    // H. ResizeObserver (No division by zero)
+    const resizeObserver = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        const width = entry.contentRect.width;
+        const height = entry.contentRect.height;
+        if (width === 0 || height === 0) continue;
+
+        camera.aspect = width / height;
+        camera.updateProjectionMatrix();
+        renderer.setSize(width, height);
+      }
+    });
+    resizeObserver.observe(container);
+
+    // I. Animation Loop (Always uses assetsRef.current)
     const clock = new THREE.Clock();
 
     const animate = () => {
-      animId = requestAnimationFrame(animate);
-
+      animFrameId = requestAnimationFrame(animate);
       const elapsedTime = clock.getElapsedTime();
 
-      // Rotate nodes and pulse glow ring based on store statuses
-      nodeMeshes.forEach((n) => {
-        // Fetch fresh state of this asset
-        const freshAsset = assets.find(a => a.id === n.id);
-        if (!freshAsset) return;
+      const latestAssets = assetsRef.current;
 
-        // Rotate OT devices/mesh shapes
-        n.mesh.children[0].rotation.y = elapsedTime * 0.4;
-        if (freshAsset.type === 'ot_device') {
-          n.mesh.children[0].rotation.x = elapsedTime * 0.2;
+      nodeMeshesRef.current.forEach((nodeMesh, assetId) => {
+        const asset = latestAssets.find(a => a.id === assetId);
+        if (!asset) return;
+
+        // Subtle mesh rotation
+        nodeMesh.baseMesh.rotation.y = elapsedTime * 0.4;
+        if (asset.type === 'ot_device') {
+          nodeMesh.baseMesh.rotation.x = elapsedTime * 0.2;
         }
 
-        // Pulse scale & update color on compromise
-        const ring = n.mesh.children[1] as THREE.Mesh;
-        const ringMat = ring.material as THREE.MeshBasicMaterial;
-
-        if (freshAsset.status === 'compromised') {
+        // Pulse scale & material glow without recreating scene
+        if (asset.status === 'compromised') {
           const pulse = 1.0 + Math.sin(elapsedTime * 6) * 0.18;
-          n.mesh.scale.set(pulse, pulse, pulse);
-          n.baseMaterial.color.set('#ef4444');
-          ringMat.color.set('#ef4444');
-          ringMat.opacity = 0.5 + Math.sin(elapsedTime * 6) * 0.2;
-        } else if (freshAsset.status === 'isolated') {
-          n.mesh.scale.set(1.0, 1.0, 1.0);
-          n.baseMaterial.color.set('#f97316');
-          ringMat.color.set('#f97316');
-          ringMat.opacity = 0.3;
+          nodeMesh.group.scale.set(pulse, pulse, pulse);
+          nodeMesh.baseMaterial.color.set('#ef4444');
+          nodeMesh.glowMaterial.color.set('#ef4444');
+          nodeMesh.glowMaterial.opacity = 0.5 + Math.sin(elapsedTime * 6) * 0.2;
+        } else if (asset.status === 'isolated') {
+          nodeMesh.group.scale.set(1.0, 1.0, 1.0);
+          nodeMesh.baseMaterial.color.set('#f97316');
+          nodeMesh.glowMaterial.color.set('#f97316');
+          nodeMesh.glowMaterial.opacity = 0.3;
         } else {
-          n.mesh.scale.set(1.0, 1.0, 1.0);
-          n.baseMaterial.color.set('#0a142c');
-          ringMat.color.set('#06b6d4');
-          ringMat.opacity = 0.4 + Math.sin(elapsedTime * 2) * 0.1;
+          nodeMesh.group.scale.set(1.0, 1.0, 1.0);
+          nodeMesh.baseMaterial.color.set('#0a142c');
+          nodeMesh.glowMaterial.color.set('#06b6d4');
+          nodeMesh.glowMaterial.opacity = 0.4 + Math.sin(elapsedTime * 2) * 0.1;
         }
       });
 
       renderer.render(scene, camera);
     };
+
     animate();
 
-    // 9. Resize handler
-    const handleResize = () => {
-      if (!container) return;
-      camera.aspect = container.clientWidth / container.clientHeight;
-      camera.updateProjectionMatrix();
-      renderer.setSize(container.clientWidth, container.clientHeight);
-    };
-    window.addEventListener('resize', handleResize);
+    const nodeMeshesMap = nodeMeshesRef.current;
 
-    // Cleanups
+    // J. Proper GPU Resource Disposal on Unmount
     return () => {
-      cancelAnimationFrame(animId);
-      window.removeEventListener('resize', handleResize);
+      cancelAnimationFrame(animFrameId);
+      resizeObserver.disconnect();
+
       container.removeEventListener('mousedown', handleMouseDown);
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mouseup', handleMouseUp);
       container.removeEventListener('click', handleMouseClick);
+
+      // Traversal and disposal of GPU resources
+      scene.traverse((object) => {
+        if ((object as THREE.Mesh).isMesh) {
+          const mesh = object as THREE.Mesh;
+          if (mesh.geometry) mesh.geometry.dispose();
+          if (mesh.material) {
+            if (Array.isArray(mesh.material)) {
+              mesh.material.forEach(m => m.dispose());
+            } else {
+              mesh.material.dispose();
+            }
+          }
+        }
+      });
+
+      renderer.dispose();
       if (container.contains(renderer.domElement)) {
         container.removeChild(renderer.domElement);
       }
+      nodeMeshesMap.clear();
+      lineMeshesRef.current = [];
     };
+  }, []); // Run WebGL Scene init ONCE on mount!
+
+  // 2. Selective Application State Sync (Runs on assets state change WITHOUT recreating WebGL scene)
+  useEffect(() => {
+    nodeMeshesRef.current.forEach((nodeMesh, id) => {
+      const asset = assets.find(a => a.id === id);
+      if (!asset) return;
+
+      if (asset.status === 'compromised') {
+        nodeMesh.baseMaterial.color.set('#ef4444');
+        nodeMesh.glowMaterial.color.set('#ef4444');
+      } else if (asset.status === 'isolated') {
+        nodeMesh.baseMaterial.color.set('#f97316');
+        nodeMesh.glowMaterial.color.set('#f97316');
+      } else {
+        nodeMesh.baseMaterial.color.set('#0a142c');
+        nodeMesh.glowMaterial.color.set('#06b6d4');
+      }
+    });
   }, [assets]);
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 h-full min-h-[500px]">
       
       {/* 3D WebGL Canvas viewport */}
-      <div className="lg:col-span-3 relative rounded-xl border border-cyan-500/10 bg-[#070b19]/60 backdrop-blur-md overflow-hidden flex flex-col justify-between p-4">
+      <div className="lg:col-span-3 relative rounded-xl border border-cyan-500/10 bg-[#070b19]/60 backdrop-blur-md overflow-hidden flex flex-col justify-between p-4 min-h-[400px]">
         
         {/* Overlays */}
         <div className="absolute top-4 left-4 z-10 font-mono text-xs flex flex-col gap-1">
           <div className="text-cyan-400 font-bold tracking-widest uppercase">
-            3D Infrastructure Digital Twin (WebGL)
+            3D Infrastructure Digital Twin (WebGL Engine)
           </div>
           <span className="text-[9px] text-gray-500">
             Hold left mouse click and drag to orbit camera. Click 3D shapes to inspect.
@@ -386,11 +440,11 @@ export default function ThreeDigitalTwin() {
               <div className="pt-4">
                 {selectedAsset.status === 'compromised' ? (
                   <div className="p-3 bg-red-950/20 border border-red-500/30 text-red-400 rounded text-[10px] leading-normal">
-                    <strong>Compromised!</strong> Attacker is pivoting to dependent systems.
+                    <strong>Compromised!</strong> Attacker is pivoting to dependent systems via BFS graph paths.
                   </div>
                 ) : selectedAsset.status === 'isolated' ? (
                   <div className="p-3 bg-orange-950/20 border border-orange-500/30 text-orange-400 rounded text-[10px] leading-normal">
-                    <strong>Isolated.</strong> VLAN segment disabled.
+                    <strong>Isolated.</strong> Microsegmentation active.
                   </div>
                 ) : (
                   <div className="p-3 bg-emerald-950/20 border border-emerald-500/30 text-emerald-400 rounded text-[10px] leading-normal">
@@ -408,7 +462,7 @@ export default function ThreeDigitalTwin() {
                     className="w-full flex items-center justify-center gap-2 bg-red-950/40 hover:bg-red-900 border border-red-500/40 text-red-400 py-2 rounded text-xs transition duration-200"
                   >
                     <Play className="h-3.5 w-3.5" />
-                    Inject Ransomware
+                    Inject BFS Ransomware
                   </button>
                   <button
                     onClick={() => isolateAsset(selectedAsset.id)}

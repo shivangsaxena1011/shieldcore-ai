@@ -1,4 +1,11 @@
 import { create } from 'zustand';
+import { copilotService } from '@/services/copilotService';
+
+let workflowTimeouts: NodeJS.Timeout[] = [];
+function clearWorkflowTimeouts() {
+  workflowTimeouts.forEach((t) => clearTimeout(t));
+  workflowTimeouts = [];
+}
 
 export interface CyberLog {
   id: string;
@@ -96,6 +103,13 @@ export interface GraphLink {
   active?: boolean;
 }
 
+export interface CopilotEvidence {
+  mitre?: string;
+  cve?: string;
+  score?: number;
+  actionsTaken?: string[];
+}
+
 export interface CyberStore {
   isAuthenticated: boolean;
   mfaVerified: boolean;
@@ -107,7 +121,7 @@ export interface CyberStore {
   assets: Asset[];
   vulnerabilities: Vulnerability[];
   agents: AIAgent[];
-  copilotMessages: { role: 'user' | 'assistant'; content: string; timestamp: string; evidence?: any }[];
+  copilotMessages: { role: 'user' | 'assistant'; content: string; timestamp: string; evidence?: CopilotEvidence }[];
   copilotLoading: boolean;
   timeMachinePlaying: boolean;
   timeMachineTime: number; // 0-100
@@ -152,13 +166,79 @@ export interface CyberStore {
   resetSimulation: () => void;
   tickSimulatedStreams: () => void;
 
-  // New Enhancements Actions
+  // Upgraded Actions
   executeCommandCenterWorkflow: (command: string) => void;
   runRedTeamSimulation: () => void;
   runBlueTeamMitigation: () => void;
   runPurpleTeamAudit: () => void;
   updateArsCalculation: () => void;
 }
+
+// Helper function to generate unique IDs and avoid millisecond collisions
+export function generateId(prefix: string): string {
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+    return `${prefix}-${crypto.randomUUID().substring(0, 8)}`;
+  }
+  return `${prefix}-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
+}
+
+// Unweighted BFS Graph Traversal for Shortest Path calculation
+export function findShortestPath(
+  nodes: GraphNode[],
+  links: GraphLink[],
+  startId: string,
+  targetId: string
+): string[] {
+  if (!startId || !targetId) return [];
+  if (startId === targetId) return [startId];
+
+  // Build adjacency list
+  const adj = new Map<string, string[]>();
+  nodes.forEach(n => adj.set(n.id, []));
+  links.forEach(l => {
+    const s = typeof l.source === 'object' && l.source !== null ? (l.source as { id: string }).id : String(l.source);
+    const t = typeof l.target === 'object' && l.target !== null ? (l.target as { id: string }).id : String(l.target);
+    if (adj.has(s)) adj.get(s)!.push(t);
+    if (adj.has(t)) adj.get(t)!.push(s); // Bi-directional lookup for unweighted graph
+  });
+
+  const queue: string[] = [startId];
+  const parent = new Map<string, string>();
+  const visited = new Set<string>([startId]);
+
+  while (queue.length > 0) {
+    const curr = queue.shift()!;
+    if (curr === targetId) {
+      // Reconstruct path
+      const path: string[] = [];
+      let step: string | undefined = targetId;
+      while (step) {
+        path.unshift(step);
+        step = parent.get(step);
+      }
+      return path;
+    }
+
+    const neighbors = adj.get(curr) || [];
+    for (const neighbor of neighbors) {
+      if (!visited.has(neighbor)) {
+        visited.add(neighbor);
+        parent.set(neighbor, curr);
+        queue.push(neighbor);
+      }
+    }
+  }
+
+  return []; // No path found
+}
+
+// Deterministic ARS Weight Configurations
+export const ARS_WEIGHTS = {
+  anomalies: 30,
+  segmentation: 25,
+  patching: 25,
+  backups: 20
+};
 
 const initialAssets: Asset[] = [
   { id: 'pwr-gen-1', name: 'Power Plant Generator Controller', type: 'ot_device', ip: '10.240.12.5', sector: 'power_grid', criticality: 'critical', status: 'online', vulnerabilitiesCount: 3, ars: 85, dependencies: ['pwr-sw-1'] },
@@ -186,7 +266,7 @@ const initialIncidents: Incident[] = [
     timestamp: '2026-07-22T00:01:00Z',
     mitreTechnique: 'T1021.002 (Remote Services: SMB/Windows Admin Shares)',
     confidenceScore: 94,
-    explanation: 'A baseline deviation was flagged on the AIIMS Medical Records mainframe. The user admin_shiva logged in at 2:00 AM from a VPN endpoint with a foreign IP, executed a Large File Transfer, and executed PowerShell scripts requesting Domain Admin tokens.',
+    explanation: 'A baseline deviation was flagged on the AIIMS Medical Records mainframe. User admin_shiva logged in at 2:00 AM from a VPN endpoint with a foreign IP, executed a Large File Transfer, and ran PowerShell scripts requesting Domain Admin tokens.',
     evidence: [
       'Login anomaly: user admin_shiva at 2:14 AM (Normal: 9 AM - 6 PM)',
       'USB insertion event detected on Endpoint AIIMS-SRV-04',
@@ -249,13 +329,12 @@ const initialAgents: AIAgent[] = [
   { id: 'agent-9', name: 'Recovery Agent', role: 'Snapshot Verification & Integrity Restorer', status: 'idle', health: 96, load: 8, lastAction: 'Verified snapshot integrity for AIIMS database backup', thinkingLog: ['[Recovery] Verified shadow volume checksum. System backup intact.'] }
 ];
 
-// Graph Nodes & Links for Neo4j model representation
 const initialGraphNodes: GraphNode[] = [
   { id: 'u-shiva', label: 'admin_shiva', type: 'user', status: 'compromised' },
   { id: 'ip-vpn', label: '198.51.100.41', type: 'ip', status: 'compromised' },
-  { id: 'srv-aiims', label: 'med-rec-1', type: 'device', status: 'compromised' },
-  { id: 'srv-nic', label: 'cld-edge-1', type: 'device', status: 'normal' },
-  { id: 'db-scada', label: 'pwr-db-1', type: 'database', status: 'normal' },
+  { id: 'med-rec-1', label: 'AIIMS Patient DB', type: 'device', status: 'compromised' },
+  { id: 'cld-edge-1', label: 'NIC Cloud Node', type: 'device', status: 'normal' },
+  { id: 'pwr-db-1', label: 'SCADA Telemetry DB', type: 'database', status: 'normal' },
   { id: 'cve-esc', label: 'CVE-2024-38193', type: 'vuln' },
   { id: 'mal-mimi', label: 'Mimikatz', type: 'malware' },
   { id: 'actor-apt', label: 'APT29 (CozyBear)', type: 'actor' }
@@ -263,12 +342,16 @@ const initialGraphNodes: GraphNode[] = [
 
 const initialGraphLinks: GraphLink[] = [
   { source: 'ip-vpn', target: 'u-shiva', type: 'AUTHENTICATED_AS', active: true },
-  { source: 'u-shiva', target: 'srv-aiims', type: 'LOGGED_INTO', active: true },
-  { source: 'srv-aiims', target: 'cve-esc', type: 'EXPLOITED_VIA', active: true },
-  { source: 'srv-aiims', target: 'mal-mimi', type: 'EXECUTED_PAYLOAD', active: true },
+  { source: 'u-shiva', target: 'med-rec-1', type: 'LOGGED_INTO', active: true },
+  { source: 'med-rec-1', target: 'cve-esc', type: 'EXPLOITED_VIA', active: true },
+  { source: 'med-rec-1', target: 'mal-mimi', type: 'EXECUTED_PAYLOAD', active: true },
   { source: 'mal-mimi', target: 'actor-apt', type: 'ATTRIBUTED_TO' },
-  { source: 'srv-aiims', target: 'srv-nic', type: 'DEPENDS_ON' },
-  { source: 'srv-nic', target: 'db-scada', type: 'TRAFFIC_ROUTE' }
+  { source: 'med-rec-1', target: 'cld-edge-1', type: 'DEPENDS_ON' },
+  { source: 'cld-edge-1', target: 'pwr-db-1', type: 'TRAFFIC_ROUTE' }
+];
+
+const initialSigmaRules: SigmaRule[] = [
+  { id: 'sig-001', name: 'Windows LSASS Access via Mimikatz', rule: 'title: Detect LSASS dump\ndetect:\n  selection:\n    Image: "*\\mimikatz.exe"\n    TargetObject: "*\\lsass.exe"', date: '2026-07-22' }
 ];
 
 export const useCyberStore = create<CyberStore>((set, get) => ({
@@ -291,7 +374,7 @@ export const useCyberStore = create<CyberStore>((set, get) => ({
   timeMachineSpeed: 1,
   globalArs: 82,
 
-  // New Enhancements State
+  // Enhancements State
   agentMessages: [],
   supervisorWorkflowActive: false,
   supervisorStatus: 'Awaiting operator input...',
@@ -303,9 +386,7 @@ export const useCyberStore = create<CyberStore>((set, get) => ({
   blueTeamLogs: [],
   purpleTeamLogs: [],
   
-  sigmaRulesGenerated: [
-    { id: 'sig-001', name: 'Windows LSASS Access via Mimikatz', rule: 'title: Detect LSASS dump\ndetect:\n  selection:\n    Image: "*\\mimikatz.exe"\n    TargetObject: "*\\lsass.exe"', date: '2026-07-22' }
-  ],
+  sigmaRulesGenerated: initialSigmaRules,
   nationalDisruptionIndex: { power: 5, transport: 0, medical: 35, water: 0 },
   arsBreakdown: { anomalies: 12, patches: 28, backups: 30, segmentation: 12 },
   
@@ -327,15 +408,13 @@ export const useCyberStore = create<CyberStore>((set, get) => ({
         asset.id === assetId ? { ...asset, status: 'isolated' as const, ars: Math.min(100, asset.ars + 15) } : asset
       );
 
-      // Update Knowledge Graph node status
       const updatedGraphNodes = state.graphNodes.map(node =>
         node.id === assetId ? { ...node, status: 'isolated' as const } : node
       );
 
-      // Create Agent Message to document isolation
       const timestamp = new Date().toISOString();
       const newMsg: AgentMessage = {
-        id: `msg-${Date.now()}`,
+        id: generateId('msg'),
         timestamp,
         sender: 'Supervisor Agent',
         recipient: 'Auto Response AI',
@@ -343,7 +422,7 @@ export const useCyberStore = create<CyberStore>((set, get) => ({
       };
 
       const newLog: CyberLog = {
-        id: `log-${Date.now()}`,
+        id: generateId('log'),
         timestamp,
         source: 'Auto Response AI',
         message: `Isolating CNI node [${assetId}]. Revoked User credentials for admin_shiva, microsegments locked.`,
@@ -375,13 +454,12 @@ export const useCyberStore = create<CyberStore>((set, get) => ({
           : asset
       );
 
-      // Reset Graph Nodes to normal
       const updatedGraphNodes = state.graphNodes.map(node =>
         incident.affectedNodes.includes(node.id) ? { ...node, status: 'normal' as const } : node
       );
 
       const newLog: CyberLog = {
-        id: `log-${Date.now()}`,
+        id: generateId('log'),
         timestamp: new Date().toISOString(),
         source: 'Recovery Agent',
         message: `Mitigated alert queue for ${incidentId}. Golden Master verified, rollback successful.`,
@@ -414,15 +492,19 @@ export const useCyberStore = create<CyberStore>((set, get) => ({
           : asset
       );
 
-      // Send structured agent messages
       const msgs: AgentMessage[] = [
-        { id: `msg-soar-1-${Date.now()}`, timestamp, sender: 'Supervisor Agent', recipient: 'Planner Agent', content: `Analyze incident: ${incidentId} and draft playbooks.` },
-        { id: `msg-soar-2-${Date.now()}`, timestamp, sender: 'Planner Agent', recipient: 'Auto Response AI', content: `Execute containment sequence [${playbookType}] immediately.` }
+        { id: generateId('msg-soar'), timestamp, sender: 'Supervisor Agent', recipient: 'Planner Agent', content: `Analyze incident: ${incidentId} and draft playbooks.` },
+        { id: generateId('msg-soar'), timestamp, sender: 'Planner Agent', recipient: 'Auto Response AI', content: `Execute containment sequence [${playbookType}] immediately.` }
       ];
+
+      const updatedGraphNodes = state.graphNodes.map(node =>
+        incident.affectedNodes.includes(node.id) ? { ...node, status: 'isolated' as const } : node
+      );
 
       return {
         incidents: updatedIncidents,
         assets: updatedAssets,
+        graphNodes: updatedGraphNodes,
         agentMessages: [...msgs, ...state.agentMessages].slice(0, 50)
       };
     });
@@ -441,61 +523,20 @@ export const useCyberStore = create<CyberStore>((set, get) => ({
       copilotLoading: true
     }));
 
-    setTimeout(() => {
-      const lower = message.toLowerCase();
-      let response = '';
-      let evidenceObj: any = {};
-
-      if (lower.includes('why was') || lower.includes('isolate')) {
-        response = `### CyberGPT RAG Assessment // Incident containment
-Our **Supervisor Agent** orchestrated a multi-agent validation that resulted in the isolation of **AIIMS Mainframe DB (172.16.50.88)**:
-1. **Behavioral Agent (Agent 2)** caught an anomalous SSH session timing (2:14 AM vs 9:00 AM baseline).
-2. **Threat Correlation Agent (Agent 3)** mapped the events on the **Neo4j Knowledge Graph** linking: \`admin_shiva\` -> VPN IP \`198.51.100.41\` -> executed \`Mimikatz\` payload.
-3. RAG lookup on **MITRE ATT&CK** database flagged technique **T1021.002 (Remote Services: SMB)**.
-4. **Planner Agent** delegated containment rules to **Auto Response AI (Agent 7)**, which isolated the host in **6.4 seconds**.
-
-**Citations**:
-*   *MITRE ATT&CK*: [T1021.002](https://attack.mitre.org/techniques/T1021/002)
-*   *CERT-In Bulletin*: CIV-2026-0041
-*   *CVE Database*: CVE-2024-38193 (Windows privilege escalation)`;
-        evidenceObj = { mitre: 'T1021.002', cve: 'CVE-2024-38193', score: 94 };
-      } else if (lower.includes('predict') || lower.includes('next attack')) {
-        response = `### Attack Path Forecasting // Sankey Node Probability
-The **Predictive Attack Intelligence Engine (Agent 5)** has forecast future attacker decisions with a **96% Confidence Level**:
-*   **Path A (88% Probability)**: Privilege Escalation via Windows MSHTML kernel bypass -> traversal to **NIC Cloud Node (203.0.113.50)**.
-*   **Path B (12% Probability)**: Persistence via registry key modifications -> exfiltration over DNS tunnels.
-
-**Suggested Mitigations**:
-*   Ensure **OT Firewalls** are segmented.
-*   Apply Cumulative Update KB5040437 (remedies CVE-2024-38193).`;
-      } else if (lower.includes('report') || lower.includes('executive')) {
-        response = `### ShieldCore AI Coordinated Briefing // CNI Posture
-**Incident ID**: INC-001 | **Classification**: Espionage Campaign APT29
-**Avoided Loss**: ₹14 Crore | **Downtime Prevented**: 4.5 Days
-
-Our autonomous agents intercepted a credential-theft campaign aiming to deploy ransomware across the AIIMS network. The intrusion was detected, analyzed, and neutralized by the multi-agent mesh without causing power, railway, or hospital service degradation. System integrity is verified.`;
-      } else if (lower.includes('power grid') || lower.includes('status')) {
-        response = `### CNI Power Grid Posture Review
-*   **SCADA Controllers**: Online, polling Modbus commands correctly.
-*   **Integrity Hash**: Golden Master verified.
-*   **Threat Hunter loop**: 0 vulnerabilities exploited.
-*   **Resilience score**: 89/100 (Optimal).`;
-      } else {
-        response = `I have received your prompt. Currently monitoring the **Federated Threat Intel Network (Parliament Mode)**. 
-*   **AI agents status**: 9 active, Supervisor Agent online.
-*   **Knowledge Graph**: 8 active entities, 7 relationships.
-*   **Global ARS**: 82/100.
-How would you like the multi-agent supervisor to coordinate the enclaves?`;
-      }
-
+    copilotService.respond(message).then((res) => {
       set((state) => ({
         copilotMessages: [
           ...state.copilotMessages,
-          { role: 'assistant', content: response, timestamp: new Date().toISOString(), evidence: Object.keys(evidenceObj).length ? evidenceObj : undefined }
+          {
+            role: 'assistant',
+            content: res.content,
+            timestamp: new Date().toISOString(),
+            evidence: res.evidence
+          }
         ],
         copilotLoading: false
       }));
-    }, 1200);
+    });
   },
 
   runVulnerabilityPatch: (cve) => {
@@ -527,30 +568,56 @@ How would you like the multi-agent supervisor to coordinate the enclaves?`;
   setTimeMachineTime: (time) => set({ timeMachineTime: time }),
   setTimeMachineSpeed: (speed) => set({ timeMachineSpeed: speed }),
 
+  // BFS Ransomware Propagation Algorithm with Cycle Detection (Set<string>)
   simulateRansomwareOutbreak: (startAssetId) => {
     set((state) => {
-      const asset = state.assets.find((a) => a.id === startAssetId);
-      if (!asset) return {};
+      const startAsset = state.assets.find((a) => a.id === startAssetId);
+      if (!startAsset) return {};
 
-      let updatedAssets = state.assets.map((a) =>
-        a.id === startAssetId ? { ...a, status: 'compromised' as const, ars: Math.max(0, a.ars - 50) } : a
+      // Perform BFS Graph Traversal along asset dependencies
+      const compromisedSet = new Set<string>();
+      const queue: string[] = [startAssetId];
+      const propagationPath: string[] = [];
+
+      while (queue.length > 0) {
+        const currId = queue.shift()!;
+        if (compromisedSet.has(currId)) continue;
+
+        compromisedSet.add(currId);
+        propagationPath.push(currId);
+
+        const currAsset = state.assets.find((a) => a.id === currId);
+        if (currAsset && currAsset.dependencies) {
+          for (const depId of currAsset.dependencies) {
+            if (!compromisedSet.has(depId)) {
+              queue.push(depId);
+            }
+          }
+        }
+      }
+
+      // Update assets status based on BFS traversal
+      const updatedAssets = state.assets.map((a) => {
+        if (compromisedSet.has(a.id)) {
+          const dropAmount = a.id === startAssetId ? 50 : 35;
+          return { ...a, status: 'compromised' as const, ars: Math.max(0, a.ars - dropAmount) };
+        }
+        return a;
+      });
+
+      // Update Knowledge Graph nodes
+      const updatedGraphNodes = state.graphNodes.map((n) =>
+        compromisedSet.has(n.id) ? { ...n, status: 'compromised' as const } : n
       );
 
-      // Update Knowledge Graph node status
-      const updatedGraphNodes = state.graphNodes.map(node =>
-        node.id === startAssetId ? { ...node, status: 'compromised' as const } : node
-      );
-
-      const propagationList = asset.dependencies;
-      updatedAssets = updatedAssets.map((a) =>
-        propagationList.includes(a.id) ? { ...a, status: 'compromised' as const, ars: Math.max(0, a.ars - 35) } : a
-      );
+      const timestamp = new Date().toISOString();
+      const propagationNames = propagationPath.map(id => state.assets.find(a => a.id === id)?.name || id).join(' → ');
 
       const newLog: CyberLog = {
-        id: `log-${Date.now()}`,
-        timestamp: new Date().toISOString(),
+        id: generateId('log'),
+        timestamp,
         source: 'Cyber Digital Twin',
-        message: `Ransomware propagation simulation active on node: ${startAssetId}. Propagating to dependencies: ${propagationList.join(', ')}.`,
+        message: `Ransomware simulation started at ${startAsset.name} (${startAssetId}). Propagation path: ${propagationNames}. ${compromisedSet.size} assets affected.`,
         severity: 'critical'
       };
 
@@ -560,27 +627,38 @@ How would you like the multi-agent supervisor to coordinate the enclaves?`;
         logs: [newLog, ...state.logs].slice(0, 100)
       };
     });
+
     get().updateArsCalculation();
   },
 
+  // Complete Simulation Reset (Resets state without destroying user authentication)
   resetSimulation: () => {
-    set((state) => {
-      return {
-        assets: initialAssets,
-        graphNodes: initialGraphNodes,
-        incidents: initialIncidents,
-        vulnerabilities: initialVulnerabilities,
-        nationalDisruptionIndex: { power: 5, transport: 0, medical: 35, water: 0 }
-      };
+    clearWorkflowTimeouts();
+    set({
+      assets: initialAssets,
+      graphNodes: initialGraphNodes,
+      incidents: initialIncidents,
+      vulnerabilities: initialVulnerabilities,
+      logs: [],
+      agentMessages: [],
+      supervisorLogs: [],
+      redTeamLogs: [],
+      blueTeamLogs: [],
+      purpleTeamLogs: [],
+      sigmaRulesGenerated: initialSigmaRules,
+      redTeamActive: false,
+      blueTeamActive: false,
+      supervisorWorkflowActive: false,
+      supervisorStatus: 'Awaiting operator input...',
+      nationalDisruptionIndex: { power: 5, transport: 0, medical: 35, water: 0 }
     });
     get().updateArsCalculation();
   },
 
   tickSimulatedStreams: () => {
     set((state) => {
-      if (state.activeTab === 'login') return {};
+      if (!state.isAuthenticated || state.activeTab === 'login') return {};
 
-      // Ingest synthetic cyber logs (including process and Modbus details)
       const categories: Array<'auth' | 'process' | 'network' | 'dns' | 'usb' | 'ot_scada'> = ['auth', 'process', 'network', 'dns', 'ot_scada'];
       const sources = ['Power Router', 'AIIMS ActiveDirectory', 'Metro signaling Server', 'National NIC Edge'];
       const messages = [
@@ -598,7 +676,7 @@ How would you like the multi-agent supervisor to coordinate the enclaves?`;
       const falsePositiveProb = Math.floor(Math.random() * 10);
 
       const newLog: CyberLog = {
-        id: `log-${Date.now()}`,
+        id: generateId('log'),
         timestamp: new Date().toISOString(),
         source,
         message,
@@ -608,7 +686,6 @@ How would you like the multi-agent supervisor to coordinate the enclaves?`;
         falsePositiveProb
       };
 
-      // Randomly update agent loads
       const updatedAgents = state.agents.map(a => ({
         ...a,
         load: Math.max(5, Math.min(95, a.load + Math.floor(Math.random() * 9) - 4))
@@ -621,11 +698,11 @@ How would you like the multi-agent supervisor to coordinate the enclaves?`;
     });
   },
 
-  // Upgraded Agentic Actions
+  // Multi-Agent Workflow Engine with cancellation support
   executeCommandCenterWorkflow: (command) => {
+    clearWorkflowTimeouts();
     const timestamp = new Date().toISOString();
     
-    // Add command to copilot as user message
     set((state) => ({
       copilotMessages: [...state.copilotMessages, { role: 'user', content: command, timestamp }],
       supervisorWorkflowActive: true,
@@ -633,17 +710,16 @@ How would you like the multi-agent supervisor to coordinate the enclaves?`;
       supervisorLogs: [`[Supervisor] Analyzing Command: "${command}"`]
     }));
 
-    // Trigger sequential Multi-Agent planning
-    setTimeout(() => {
+    const t1 = setTimeout(() => {
       set((state) => ({
         supervisorLogs: [...state.supervisorLogs, '[Supervisor] Delegating threat evaluation to Planner Agent.'],
         agentMessages: [
-          { id: `msg-cmd-1-${Date.now()}`, timestamp, sender: 'Supervisor Agent', recipient: 'Planner Agent', content: `Decompose objective: ${command}` },
+          { id: generateId('msg-cmd'), timestamp, sender: 'Supervisor Agent', recipient: 'Planner Agent', content: `Decompose objective: ${command}` },
           ...state.agentMessages
         ]
       }));
 
-      setTimeout(() => {
+      const t2 = setTimeout(() => {
         set((state) => ({
           supervisorLogs: [
             ...state.supervisorLogs, 
@@ -651,21 +727,18 @@ How would you like the multi-agent supervisor to coordinate the enclaves?`;
             '[Supervisor] Deploying Red Team Agent to evaluate attack vectors.'
           ],
           agentMessages: [
-            { id: `msg-cmd-2-${Date.now()}`, timestamp, sender: 'Planner Agent', recipient: 'Red Team Agent', content: 'Scan Digital Twin for vulnerability paths.' },
+            { id: generateId('msg-cmd'), timestamp, sender: 'Planner Agent', recipient: 'Red Team Agent', content: 'Scan Digital Twin for vulnerability paths.' },
             ...state.agentMessages
           ]
         }));
 
-        setTimeout(() => {
-          // Trigger Red Team exploit simulation
+        const t3 = setTimeout(() => {
           get().runRedTeamSimulation();
 
-          setTimeout(() => {
-            // Trigger Blue Team mitigation
+          const t4 = setTimeout(() => {
             get().runBlueTeamMitigation();
 
-            setTimeout(() => {
-              // Trigger Purple Team audit
+            const t5 = setTimeout(() => {
               get().runPurpleTeamAudit();
               
               set((state) => ({
@@ -673,26 +746,41 @@ How would you like the multi-agent supervisor to coordinate the enclaves?`;
                 supervisorStatus: 'Workflow Completed.',
                 supervisorLogs: [...state.supervisorLogs, '[Supervisor] Coordinated Multi-Agent defenses verified. ARS optimal.']
               }));
-              
-              setNotif(`Multi-Agent Command Workflow Completed: ${command}`);
             }, 1000);
+            workflowTimeouts.push(t5);
           }, 1500);
+          workflowTimeouts.push(t4);
         }, 1500);
+        workflowTimeouts.push(t3);
       }, 1500);
+      workflowTimeouts.push(t2);
     }, 1000);
+    workflowTimeouts.push(t1);
   },
 
+  // Safe Red Team candidate selection
   runRedTeamSimulation: () => {
-    set((state) => {
-      const timestamp = new Date().toISOString();
-      
-      // Compromise a random asset in the digital twin
-      const targetAsset = state.assets[Math.floor(Math.random() * state.assets.length)];
-      const updatedAssets = state.assets.map(a =>
+    const state = get();
+    const candidateAssets = state.assets.filter(a => a.status === 'online');
+    const timestamp = new Date().toISOString();
+
+    if (candidateAssets.length === 0) {
+      set((s) => ({
+        redTeamActive: false,
+        redTeamLogs: ['[Red Team] No eligible online assets available for Red Team simulation.'],
+        supervisorLogs: [...s.supervisorLogs, '[Red Team] All candidate CNI nodes isolated or compromised. Aborting sweep.']
+      }));
+      return;
+    }
+
+    const targetAsset = candidateAssets[Math.floor(Math.random() * candidateAssets.length)];
+    
+    set((s) => {
+      const updatedAssets = s.assets.map(a =>
         a.id === targetAsset.id ? { ...a, status: 'compromised' as const, ars: Math.max(0, a.ars - 40) } : a
       );
 
-      const updatedGraphNodes = state.graphNodes.map(n =>
+      const updatedGraphNodes = s.graphNodes.map(n =>
         n.id === targetAsset.id ? { ...n, status: 'compromised' as const } : n
       );
 
@@ -708,22 +796,30 @@ How would you like the multi-agent supervisor to coordinate the enclaves?`;
         graphNodes: updatedGraphNodes,
         redTeamActive: true,
         redTeamLogs: redLogs,
-        supervisorLogs: [...state.supervisorLogs, '[Red Team] Discovered vulnerability path and compromised target CNI node.'],
+        supervisorLogs: [...s.supervisorLogs, `[Red Team] Discovered vulnerability path and compromised CNI node ${targetAsset.name}.`],
         agentMessages: [
-          { id: `msg-red-${Date.now()}`, timestamp, sender: 'Red Team Agent', recipient: 'Supervisor Agent', content: `Exploited CVE-2024-38193 on host ${targetAsset.id}.` },
-          ...state.agentMessages
+          { id: generateId('msg-red'), timestamp, sender: 'Red Team Agent', recipient: 'Supervisor Agent', content: `Exploited CVE-2024-38193 on host ${targetAsset.id}.` },
+          ...s.agentMessages
         ]
       };
     });
+
     get().updateArsCalculation();
   },
 
+  // Scoped Blue Team mitigation
   runBlueTeamMitigation: () => {
     set((state) => {
       const timestamp = new Date().toISOString();
-      
-      // Auto isolate compromised assets
       const compromisedAssets = state.assets.filter(a => a.status === 'compromised');
+
+      if (compromisedAssets.length === 0) {
+        return {
+          blueTeamLogs: ['[Blue Team] Zero compromised assets detected. Enclave integrity 100%.'],
+          supervisorLogs: [...state.supervisorLogs, '[Blue Team] Defensive scan complete. No active compromise detected.']
+        };
+      }
+
       const updatedAssets = state.assets.map(a =>
         a.status === 'compromised' ? { ...a, status: 'isolated' as const, ars: Math.min(100, a.ars + 15) } : a
       );
@@ -732,9 +828,8 @@ How would you like the multi-agent supervisor to coordinate the enclaves?`;
         n.status === 'compromised' ? { ...n, status: 'isolated' as const } : n
       );
 
-      // Generate a new Sigma rule dynamically
       const newRule: SigmaRule = {
-        id: `sig-${Date.now()}`,
+        id: generateId('sig'),
         name: 'Detect Exploit CVE-2024-38193',
         rule: `title: Detect CVE-2024-38193 Exploit\nlogsource:\n  product: windows\ndetection:\n  selection:\n    EventID: 7045\n    Service: "MSHTML Kernel Interface"`,
         date: new Date().toISOString().substring(0, 10)
@@ -744,7 +839,7 @@ How would you like the multi-agent supervisor to coordinate the enclaves?`;
         `[Blue Team] Intercepted payload alerts on endpoint queue.`,
         `[Blue Team] Correlating telemetry. Confirmed CVE-2024-38193 exploitation.`,
         `[Blue Team] Auto-generating Sigma detection rules. Registered rule ${newRule.id}.`,
-        `[Blue Team] Applied VLAN microsegmentation isolation rules. Threatened enclaves locked.`
+        `[Blue Team] Applied VLAN microsegmentation isolation rules to ${compromisedAssets.length} host(s).`
       ];
 
       return {
@@ -755,7 +850,7 @@ How would you like the multi-agent supervisor to coordinate the enclaves?`;
         blueTeamLogs: blueLogs,
         supervisorLogs: [...state.supervisorLogs, '[Blue Team] Blocked network lateral path, registered custom Sigma rule, and isolated target hosts.'],
         agentMessages: [
-          { id: `msg-blue-${Date.now()}`, timestamp, sender: 'Blue Team Agent', recipient: 'Supervisor Agent', content: `Applied quarantine and compiled Sigma rule for CVE-2024-38193.` },
+          { id: generateId('msg-blue'), timestamp, sender: 'Blue Team Agent', recipient: 'Supervisor Agent', content: `Applied quarantine and compiled Sigma rule for CVE-2024-38193.` },
           ...state.agentMessages
         ]
       };
@@ -770,14 +865,14 @@ How would you like the multi-agent supervisor to coordinate the enclaves?`;
         `[Purple Team] Incident audit: Red Team compromise vs Blue Team detection.`,
         `[Purple Team] Exploits blocked: 100% | Detection delay: 6.4 seconds.`,
         `[Purple Team] Recalculating National Autonomous Resilience Score (ARS) post-audit.`,
-        `[Purple Team] Verification report: Defense capability index elevated to 94%.`
+        `[Purple Team] Verification report: Defense capability index elevated.`
       ];
 
       return {
         purpleTeamLogs: purpleLogs,
         supervisorLogs: [...state.supervisorLogs, '[Purple Team] Audit complete. Calculated defense gaps resolved. ARS score upgraded.'],
         agentMessages: [
-          { id: `msg-purple-${Date.now()}`, timestamp, sender: 'Purple Team Agent', recipient: 'Supervisor Agent', content: `Completed coverage audit. Verified 100% mitigation efficiency.` },
+          { id: generateId('msg-purple'), timestamp, sender: 'Purple Team Agent', recipient: 'Supervisor Agent', content: `Completed coverage audit. Verified 100% mitigation efficiency.` },
           ...state.agentMessages
         ]
       };
@@ -785,25 +880,40 @@ How would you like the multi-agent supervisor to coordinate the enclaves?`;
     get().updateArsCalculation();
   },
 
+  // Deterministic, Bounded (0-100) ARS Formula & Dynamic Disruption Calculation
   updateArsCalculation: () => {
     set((state) => {
-      // Calculate ARS factors
-      const totalAssets = state.assets.length;
-      const compromised = state.assets.filter(a => a.status === 'compromised').length;
-      const isolated = state.assets.filter(a => a.status === 'isolated').length;
-      const patched = state.vulnerabilities.filter(v => v.status === 'patched').length;
+      const totalAssetsCount = state.assets.length || 1;
+      const onlineAssetsCount = state.assets.filter(a => a.status === 'online').length;
+      const compromisedCount = state.assets.filter(a => a.status === 'compromised').length;
+      const isolatedCount = state.assets.filter(a => a.status === 'isolated').length;
+      
+      const totalVulnerabilitiesCount = state.vulnerabilities.length || 1;
+      const patchedCount = state.vulnerabilities.filter(v => v.status === 'patched').length;
 
-      // ARS Breakdown formula
-      const anomaliesFactor = Math.max(0, 30 - compromised * 15);
-      const segmentationFactor = Math.min(25, isolated * 12 + 10);
-      const patchesFactor = Math.min(25, patched * 8 + 12);
-      const backupsFactor = 20; // Verified backups constant
+      // ARS Component Weights (Sum = 100)
+      // 1. Anomalies factor (max 30): Ratio of online uncompromised assets
+      const anomaliesFactor = Math.round(ARS_WEIGHTS.anomalies * (onlineAssetsCount / totalAssetsCount));
+      
+      // 2. Segmentation factor (max 25): Ratio of isolated hosts relative to compromised threats
+      const segmentationFactor = compromisedCount === 0 
+        ? ARS_WEIGHTS.segmentation 
+        : Math.round(ARS_WEIGHTS.segmentation * (isolatedCount / (compromisedCount + isolatedCount)));
+      
+      // 3. Patching factor (max 25): Ratio of patched vulnerabilities
+      const patchesFactor = Math.round(ARS_WEIGHTS.patching * (patchedCount / totalVulnerabilitiesCount));
+      
+      // 4. Backups factor (constant 20): Verified snapshot backup integrity
+      const backupsFactor = ARS_WEIGHTS.backups;
 
       const newArs = Math.min(100, Math.max(0, anomaliesFactor + segmentationFactor + patchesFactor + backupsFactor));
 
-      // Calculate national disruption values based on compromises
-      const powerDisruption = compromised > 0 ? 45 : 5;
-      const medicalDisruption = compromised > 0 ? 80 : 35;
+      // Calculate national disruption index based on sector-specific compromises
+      const compromisedAssets = state.assets.filter(a => a.status === 'compromised');
+      const powerDisruption = compromisedAssets.some(a => a.sector === 'power_grid') ? 45 : 5;
+      const medicalDisruption = compromisedAssets.some(a => a.sector === 'healthcare') ? 80 : 35;
+      const transportDisruption = compromisedAssets.some(a => a.sector === 'railways') ? 60 : 0;
+      const waterDisruption = compromisedAssets.some(a => a.sector === 'smart_cities') ? 30 : 0;
 
       return {
         globalArs: newArs,
@@ -816,15 +926,10 @@ How would you like the multi-agent supervisor to coordinate the enclaves?`;
         nationalDisruptionIndex: {
           power: powerDisruption,
           medical: medicalDisruption,
-          transport: 0,
-          water: 0
+          transport: transportDisruption,
+          water: waterDisruption
         }
       };
     });
   }
 }));
-
-const setNotif = (message: string) => {
-  // Dispatched internally via listeners or stores.
-  // In our Next.js UI we can bind state alerts to store actions.
-};

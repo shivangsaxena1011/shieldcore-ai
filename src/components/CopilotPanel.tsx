@@ -3,11 +3,15 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useCyberStore } from '@/store/cyberStore';
 import { 
-  Send, Bot, User, Sparkles, Terminal, ShieldAlert, CheckCircle, FileText, ArrowRight
+  Send, Bot, User, Sparkles, ShieldAlert, CheckCircle, FileText, ArrowRight
 } from 'lucide-react';
 
 export default function CopilotPanel() {
-  const { copilotMessages, sendCopilotMessage, copilotLoading } = useCyberStore();
+  // Granular Zustand selectors
+  const copilotMessages = useCyberStore(state => state.copilotMessages);
+  const copilotLoading = useCyberStore(state => state.copilotLoading);
+  const sendCopilotMessage = useCyberStore(state => state.sendCopilotMessage);
+
   const [input, setInput] = useState('');
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
 
@@ -41,7 +45,7 @@ export default function CopilotPanel() {
           </div>
           <div>
             <h3 className="font-mono text-xs font-bold text-white uppercase tracking-widest flex items-center gap-1.5">
-              ShieldCore AI Security Copilot
+              ShieldCore AI Security Copilot (Demo RAG Provider)
             </h3>
             <span className="text-[9px] font-mono text-cyan-400/80">
               Linked to National CNI Multi-Agent Mesh
@@ -55,10 +59,9 @@ export default function CopilotPanel() {
       <div className="flex-grow overflow-y-auto p-4 space-y-4 font-mono text-[11px] leading-relaxed">
         {copilotMessages.map((msg, i) => (
           <div 
-            key={i} 
+            key={`${msg.timestamp}-${i}`} 
             className={`flex gap-3 ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
           >
-            {/* Robot Icon for AI response */}
             {msg.role !== 'user' && (
               <div className="h-6 w-6 rounded-full bg-cyan-950/80 border border-cyan-500/30 flex items-center justify-center shrink-0">
                 <Bot className="h-3.5 w-3.5 text-cyan-400" />
@@ -70,12 +73,10 @@ export default function CopilotPanel() {
                 ? 'bg-cyan-950/50 border border-cyan-500/20 text-cyan-100' 
                 : 'bg-[#0b1426] border border-cyan-500/5 text-gray-300'
             }`}>
-              {/* Formatted Markdown-like Response */}
               <div className="space-y-2 whitespace-pre-wrap">
                 {msg.content}
               </div>
 
-              {/* Render Evidence details if present */}
               {msg.evidence && (
                 <div className="mt-3 pt-3 border-t border-cyan-500/10 space-y-2 text-[10px]">
                   <div className="flex items-center gap-1.5 text-orange-400 font-bold uppercase tracking-wider text-[9px]">
@@ -103,7 +104,7 @@ export default function CopilotPanel() {
                     <div className="mt-1.5">
                       <div className="text-gray-400 mb-1">Actions Executed by Auto Response AI:</div>
                       <div className="space-y-1">
-                        {msg.evidence.actionsTaken.map((act: any, idx: number) => (
+                        {msg.evidence.actionsTaken.map((act: string, idx: number) => (
                           <div key={idx} className="flex items-center gap-1 text-emerald-400">
                             <CheckCircle className="h-3 w-3" />
                             {act}
@@ -116,7 +117,6 @@ export default function CopilotPanel() {
               )}
             </div>
 
-            {/* User Icon for User response */}
             {msg.role === 'user' && (
               <div className="h-6 w-6 rounded-full bg-cyan-500/20 border border-cyan-500/50 flex items-center justify-center shrink-0">
                 <User className="h-3.5 w-3.5 text-cyan-300" />
