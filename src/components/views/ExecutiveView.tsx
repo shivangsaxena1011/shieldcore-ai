@@ -6,6 +6,7 @@ import { FileText, Download, Zap, Hospital, Train, Building2 } from 'lucide-reac
 
 export default function ExecutiveView() {
   const globalArs = useCyberStore(state => state.globalArs);
+  const arsBreakdown = useCyberStore(state => state.arsBreakdown);
   const nationalDisruptionIndex = useCyberStore(state => state.nationalDisruptionIndex);
   const incidents = useCyberStore(state => state.incidents);
   const vulnerabilities = useCyberStore(state => state.vulnerabilities);
@@ -134,26 +135,44 @@ export default function ExecutiveView() {
         </h3>
         <div className="flex flex-col sm:flex-row items-center gap-6">
           <div className="text-center shrink-0">
-            <div className="text-4xl font-bold text-white glow-text-cyan">{globalArs}/100</div>
+            <div className={`text-4xl font-bold glow-text-cyan ${globalArs > 75 ? 'text-white' : 'text-amber-400'}`}>{globalArs}/100</div>
             <span className="text-[10px] text-gray-400 uppercase mt-1 block">Global ARS Index</span>
           </div>
-          <div className="w-full flex-grow space-y-2 text-xs">
+          <div className="w-full flex-grow space-y-3 text-xs">
             <div>
               <div className="flex justify-between text-[10px] mb-1">
                 <span>Anomalies Baseline (Max 30)</span>
-                <span className="text-cyan-400 font-bold">30 pts</span>
+                <span className="text-cyan-400 font-bold">{arsBreakdown.anomalies} pts</span>
               </div>
               <div className="w-full bg-gray-800 h-1.5 rounded-full overflow-hidden">
-                <div className="bg-cyan-500 h-full w-[100%]"></div>
+                <div className="bg-cyan-500 h-full transition-all duration-500" style={{ width: `${(arsBreakdown.anomalies / 30) * 100}%` }}></div>
               </div>
             </div>
             <div>
               <div className="flex justify-between text-[10px] mb-1">
                 <span>VLAN Microsegmentation (Max 25)</span>
-                <span className="text-cyan-400 font-bold">25 pts</span>
+                <span className="text-cyan-400 font-bold">{arsBreakdown.segmentation} pts</span>
               </div>
               <div className="w-full bg-gray-800 h-1.5 rounded-full overflow-hidden">
-                <div className="bg-cyan-500 h-full w-[100%]"></div>
+                <div className="bg-cyan-500 h-full transition-all duration-500" style={{ width: `${(arsBreakdown.segmentation / 25) * 100}%` }}></div>
+              </div>
+            </div>
+            <div>
+              <div className="flex justify-between text-[10px] mb-1">
+                <span>Patching Posture (Max 25)</span>
+                <span className="text-cyan-400 font-bold">{arsBreakdown.patches} pts</span>
+              </div>
+              <div className="w-full bg-gray-800 h-1.5 rounded-full overflow-hidden">
+                <div className="bg-cyan-500 h-full transition-all duration-500" style={{ width: `${(arsBreakdown.patches / 25) * 100}%` }}></div>
+              </div>
+            </div>
+            <div>
+              <div className="flex justify-between text-[10px] mb-1">
+                <span>Immutable Shadow Backups (Max 20)</span>
+                <span className="text-cyan-400 font-bold">{arsBreakdown.backups} pts</span>
+              </div>
+              <div className="w-full bg-gray-800 h-1.5 rounded-full overflow-hidden">
+                <div className="bg-cyan-500 h-full transition-all duration-500" style={{ width: `${(arsBreakdown.backups / 20) * 100}%` }}></div>
               </div>
             </div>
           </div>
